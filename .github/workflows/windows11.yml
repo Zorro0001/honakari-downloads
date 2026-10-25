@@ -17,6 +17,16 @@ jobs:
       READ_QA_ALLOW_NO_AUDIO_DEVICE: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare disposable desktop without first-login privacy wizard
+        shell: pwsh
+        run: |
+          # Microsoft-supported OOBE policy on this throwaway VM only.
+          foreach ($root in @('HKLM:','HKCU:')) {
+            $path=$root+'\Software\Policies\Microsoft\Windows\OOBE'
+            New-Item -Path $path -Force | Out-Null
+            New-ItemProperty -Path $path -Name DisablePrivacyExperience -PropertyType DWord -Value 1 -Force | Out-Null
+          }
+          Get-Process -Name UserOOBEBroker,CloudExperienceHostBroker,CloudExperienceHost -ErrorAction SilentlyContinue | Stop-Process -Force
       - name: Confirm actual Windows 11 and record architecture
         shell: pwsh
         run: |
