@@ -17,6 +17,10 @@ jobs:
       READ_QA_ALLOW_NO_AUDIO_DEVICE: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Record first-login desktop blocker
+        shell: pwsh
+        run: |
+          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -or $_.ProcessName -match 'oobe|experience|wwahost|privacy' } | Select-Object ProcessName,Id,MainWindowTitle,Path | Format-Table -AutoSize
       - name: Prepare disposable desktop without first-login privacy wizard
         shell: pwsh
         run: |
