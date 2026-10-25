@@ -23,6 +23,17 @@ $readReports=Join-Path $PSScriptRoot '..\build\validation'
 New-Item -ItemType Directory -Force -Path $readReports | Out-Null
 function Run-Checked([string]$Executable,[string[]]$Arguments) {
     $p=Start-Process -FilePath $Executable -ArgumentList $Arguments -PassThru
+    if ($Arguments -contains '--native-qa') {
+        # Only this disposable runner's own QA window: give the parent shell
+        # foreground activation ownership before the native mouse check starts.
+        $readShell=New-Object -ComObject WScript.Shell
+        $readDeadline=[DateTime]::UtcNow.AddSeconds(60)
+        while (!$p.HasExited -and [DateTime]::UtcNow -lt $readDeadline) {
+            [void]$readShell.AppActivate('Honakari — isolated laptop test')
+            Start-Sleep -Milliseconds 100
+            $p.Refresh()
+        }
+    }
     if (!$p.WaitForExit(60000)) { $p.Kill(); throw "Test timed out: $Executable" }
     if ($p.ExitCode -ne 0) {
         Get-ChildItem $readTestRoot -Filter '*.json' | ForEach-Object { Get-Content $_.FullName -Raw | Write-Host; Copy-Item $_.FullName (Join-Path $readReports ('installed-'+$_.Name)) -Force }
