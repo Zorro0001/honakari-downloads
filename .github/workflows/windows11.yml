@@ -1,0 +1,44 @@
+name: Test published x64 installers on Windows 11 ARM
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/windows11.yml', 'qa/test-installed.ps1']
+permissions:
+  contents: read
+jobs:
+  compatibility:
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [Free, Premium]
+    env:
+      READ_QA_ALLOW_NO_AUDIO_DEVICE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm actual Windows 11 and record architecture
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/validation | Out-Null
+          $os=Get-CimInstance Win32_OperatingSystem
+          if ($os.Caption -notmatch 'Windows 11') { throw 'This is not a Windows 11 machine.' }
+          [ordered]@{caption=$os.Caption;version=$os.Version;build=$os.BuildNumber;architecture=$env:PROCESSOR_ARCHITECTURE;test_scope='Existing x64 installer on Windows 11 ARM under emulation; not an Intel/AMD laptop or native ARM package.'} | ConvertTo-Json | Set-Content build/validation/os.json
+      - name: Download exact published installer and verify bytes
+        shell: pwsh
+        run: |
+          $edition='${{ matrix.edition }}'
+          $expected=if ($edition -eq 'Free') {'4b52da605358744ae2ac3e0ac9adab16009ccc863beefa702c8e25b4d217a967'} else {'00e35b45543ae379924dde26f6082137c9611ce90008656971d9269b9b8b6549'}
+          Invoke-WebRequest "https://github.com/Zorro0001/honakari-downloads/releases/download/v14.0.5/Honakari-$edition-Setup-v14.exe" -OutFile setup.exe
+          $hash=(Get-FileHash setup.exe -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $expected) { throw 'Installer bytes do not match the verified release.' }
+          [ordered]@{sha256=$hash;signature=(Get-AuthenticodeSignature setup.exe).Status.ToString()} | ConvertTo-Json | Set-Content build/validation/download.json
+      - name: Installed runtime, native interface, trial retention and uninstall
+        shell: pwsh
+        run: ./qa/test-installed.ps1 -Installer ./setup.exe -Edition '${{ matrix.edition }}' -ConfirmIsolatedTestMachine
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Windows11-ARM-x64-emulation-${{ matrix.edition }}
+          path: build/validation/
+          if-no-files-found: warn
