@@ -30,7 +30,7 @@ jobs:
             New-Item -Path $path -Force | Out-Null
             New-ItemProperty -Path $path -Name DisablePrivacyExperience -PropertyType DWord -Value 1 -Force | Out-Null
           }
-          Get-Process -Name UserOOBEBroker,CloudExperienceHostBroker,CloudExperienceHost -ErrorAction SilentlyContinue | Stop-Process -Force
+          Get-Process -Name WWAHost,UserOOBEBroker,CloudExperienceHostBroker,CloudExperienceHost -ErrorAction SilentlyContinue | Stop-Process -Force
       - name: Confirm actual Windows 11 and record architecture
         shell: pwsh
         run: |
