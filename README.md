@@ -15,4 +15,4 @@ Free shows two original Premium promotional videos per thirty active minutes; ac
 Current prices and purchase availability are shown on the website. No automatic renewals. No legal guarantee of trademark clearance is claimed.
 
 
-Version 14.0.8 keeps the Original dark appearance and adds consistent Matcha Green and Pink Matcha palettes, purple reading progress in Pink, aligned navigation boxes and a visible Import plus. The loading screen and Windows icon use the two original matcha companions. Both editions passed the automated Windows build, contrast, native interface and installer lifecycle checks. See the release notes and SHA256SUMS.txt for the exact installers.
+Version 14.0.9 fixes Panel Assist text and controls in Matcha Green and Pink Matcha for manga and comics, adds wider contrasting scrollbars and space beside the panel sidebar, and uses a dedicated Honakari matcha icon for the app window and installed shortcuts. Original colours are preserved. Both editions passed the automated Windows build, contrast, native interface and installer lifecycle checks. See the release notes and SHA256SUMS.txt for the exact installers.
