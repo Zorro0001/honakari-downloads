@@ -28,8 +28,8 @@ jobs:
         shell: pwsh
         run: |
           $edition='${{ matrix.edition }}'
-          $expected=if ($edition -eq 'Free') {'dd87d080874518b8d4e56fce38d3ffecdf0afd6ef394b59926afe690d8e30f20'} else {'a985996c9940351229046a5508165762d34912412391f85e564f1c107df38ce0'}
-          Invoke-WebRequest "https://github.com/Zorro0001/honakari-downloads/releases/download/v14.0.6/Honakari-$edition-Setup-v14.exe" -OutFile setup.exe
+          $expected=if ($edition -eq 'Free') {'023227d4d303b7dd7d51d9665371cec82cf844b3d7cb4a8c1468d465c19ce9f4'} else {'77ef1d2dc41640a05d9565c0877533424c31c27e8781e0bcdda57cff8316784e'}
+          Invoke-WebRequest "https://github.com/Zorro0001/honakari-downloads/releases/download/v14.0.7/Honakari-$edition-Setup-v14.exe" -OutFile setup.exe
           $hash=(Get-FileHash setup.exe -Algorithm SHA256).Hash.ToLower()
           if ($hash -ne $expected) { throw 'Installer bytes do not match the verified release.' }
           [ordered]@{sha256=$hash;signature=(Get-AuthenticodeSignature setup.exe).Status.ToString()} | ConvertTo-Json | Set-Content build/validation/download.json
