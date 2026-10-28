@@ -21,15 +21,58 @@ $readMarker=Join-Path $readData 'release-test-preserve.txt'
 [IO.File]::WriteAllText($readMarker,'Disposable release test: keep library data through upgrade and uninstall.')
 $readReports=Join-Path $PSScriptRoot '..\build\validation'
 New-Item -ItemType Directory -Force -Path $readReports | Out-Null
+# Foreground activation stays inside the disposable native-test harness.
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class ReadQaForeground {
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint process);
+    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] static extern bool AttachThreadInput(uint first, uint second, bool attach);
+    [DllImport("user32.dll")] static extern bool ShowWindowAsync(IntPtr hwnd, int command);
+    [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
+    public static bool Activate(string title) {
+        IntPtr target=FindWindow(null,title);
+        if(target==IntPtr.Zero) return false;
+        if(GetForegroundWindow()==target) return true;
+        uint unused;
+        uint current=GetCurrentThreadId();
+        uint foreground=GetWindowThreadProcessId(GetForegroundWindow(),out unused);
+        uint targetThread=GetWindowThreadProcessId(target,out unused);
+        bool attachedForeground=false, attachedTarget=false;
+        try {
+            if(foreground!=0 && foreground!=current) attachedForeground=AttachThreadInput(current,foreground,true);
+            if(targetThread!=0 && targetThread!=current && targetThread!=foreground) attachedTarget=AttachThreadInput(current,targetThread,true);
+            ShowWindowAsync(target,9);
+            BringWindowToTop(target);
+            SetForegroundWindow(target);
+            return GetForegroundWindow()==target;
+        } finally {
+            if(attachedTarget) AttachThreadInput(current,targetThread,false);
+            if(attachedForeground) AttachThreadInput(current,foreground,false);
+        }
+    }
+}
+'@
 function Run-Checked([string]$Executable,[string[]]$Arguments) {
     $p=Start-Process -FilePath $Executable -ArgumentList $Arguments -PassThru
     if ($Arguments -contains '--native-qa') {
-        # Only this disposable runner's own QA window: give the parent shell
-        # foreground activation ownership before the native mouse check starts.
+        # Only the isolated QA window on this disposable VM. The Windows Start
+        # menu can own focus after first login; dismiss it before activating QA.
         $readShell=New-Object -ComObject WScript.Shell
-        $readDeadline=[DateTime]::UtcNow.AddSeconds(60)
+        $readDeadline=[DateTime]::UtcNow.AddSeconds(180)
         while (!$p.HasExited -and [DateTime]::UtcNow -lt $readDeadline) {
-            [void]$readShell.AppActivate('Honakari — isolated laptop test')
+            $readForeground=[ReadQaForeground]::GetForegroundWindow()
+            [uint32]$readForegroundPid=0
+            [void][ReadQaForeground]::GetWindowThreadProcessId($readForeground,[ref]$readForegroundPid)
+            $readForegroundProcess=Get-Process -Id $readForegroundPid -ErrorAction SilentlyContinue
+            if ($readForegroundProcess -and $readForegroundProcess.ProcessName -in @('StartMenuExperienceHost','SearchHost','SearchApp')) {
+                $readShell.SendKeys('{ESC}')
+            }
+            [void][ReadQaForeground]::Activate('Honakari — isolated laptop test')
             Start-Sleep -Milliseconds 100
             $p.Refresh()
         }
