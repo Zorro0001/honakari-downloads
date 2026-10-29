@@ -1,0 +1,54 @@
+name: Capture published Windows app for Honakari trailer
+on:
+  push:
+    paths: ['.github/workflows/windows-trailer-capture.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  capture:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    env:
+      READ_QA_ALLOW_NO_AUDIO_DEVICE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and install public Free build in disposable location
+        shell: pwsh
+        run: |
+          Invoke-WebRequest 'https://github.com/Zorro0001/honakari-downloads/releases/download/v14.0.9/Honakari-Free-Setup-v14.exe' -OutFile setup.exe
+          if ((Get-FileHash setup.exe -Algorithm SHA256).Hash.ToLower() -ne '602259c1b36d5c9e734fbc7fd0427a528385fc1ddb5f7af7c89f0735bf270067') { throw 'Unexpected installer bytes.' }
+          $appDir=Join-Path $env:RUNNER_TEMP 'HonakariTrailer'
+          Start-Process ./setup.exe -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/DIR="'+$appDir+'"')) -Wait
+          New-Item -ItemType Directory -Force capture | Out-Null
+          $exe=Get-ChildItem $appDir -Recurse -Filter *.exe | Where-Object { $_.Name -notmatch '^unins|crashpad|webview' } | Sort-Object Length -Descending | Select-Object -First 1
+          if (!$exe) { throw 'App executable not found.' }
+          $exe.FullName | Set-Content capture/app-path.txt
+      - name: Install standard FFmpeg capture tool
+        shell: pwsh
+        run: |
+          choco install ffmpeg --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg install failed.' }
+      - name: Record actual app running its isolated sample interactions
+        shell: pwsh
+        run: |
+          $ff=Get-ChildItem 'C:/ProgramData/chocolatey' -Filter ffmpeg.exe -Recurse | Select-Object -First 1
+          if (!$ff) { throw 'FFmpeg not found.' }
+          $record=Start-Process $ff.FullName -ArgumentList @('-y','-f','gdigrab','-framerate','30','-i','desktop','-t','150','-c:v','libx264','-preset','ultrafast','-crf','20','-pix_fmt','yuv420p','capture/windows-app.mp4') -PassThru -RedirectStandardError capture/recording.log
+          Start-Sleep -Seconds 2
+          $exe=(Get-Content capture/app-path.txt -Raw).Trim()
+          $report=Join-Path (Get-Location) 'capture/native-qa.json'
+          $app=Start-Process $exe -ArgumentList @('--native-qa','--report',('"'+$report+'"')) -PassThru
+          if (!$app.WaitForExit(140000)) { $app.Kill(); 'App QA timed out; footage remains diagnostic only.' | Set-Content capture/status.txt } else { "App QA exit: $($app.ExitCode). Do not infer a QA pass from video existence." | Set-Content capture/status.txt }
+          $record.WaitForExit()
+          if (!(Test-Path capture/windows-app.mp4)) { throw 'No video produced.' }
+          Remove-Item capture/app-path.txt
+      - name: Preserve capture without Actions artifact storage
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag='windows-trailer-capture-${{ github.run_id }}'
+          gh release create $tag --draft --title "Windows trailer capture ${{ github.run_id }}" --notes 'Actual published app with generated test fixtures on disposable Windows runner. Diagnostic footage; not a product QA pass.'
+          gh release upload $tag capture/windows-app.mp4 capture/*.json capture/*.txt capture/*.log --clobber
