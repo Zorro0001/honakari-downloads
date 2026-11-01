@@ -3,10 +3,16 @@ on:
   push:
     paths: ['.github/workflows/windows-trailer-capture.yml']
   workflow_dispatch:
+    inputs:
+      promotion_manifest:
+        description: Six approved 14.2.2 binary URLs, sizes and SHA-256 checksums
+        required: false
+        type: string
 permissions:
   contents: write
 jobs:
   capture:
+    if: ${{ !inputs.promotion_manifest }}
     runs-on: windows-latest
     timeout-minutes: 12
     env:
@@ -52,3 +58,21 @@ jobs:
           $tag='windows-trailer-capture-${{ github.run_id }}'
           gh release create $tag --draft --title "Windows trailer capture ${{ github.run_id }}" --notes 'Actual published app with generated test fixtures on disposable Windows runner. Diagnostic footage; not a product QA pass.'
           gh release upload $tag capture/windows-app.mp4 capture/*.json capture/*.txt capture/*.log --clobber
+
+  publish-approved:
+    if: ${{ inputs.promotion_manifest != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify the exact approved customer binaries
+        env:
+          PROMOTION_MANIFEST: ${{ inputs.promotion_manifest }}
+        run: python release-tools/publish-approved.py
+      - name: Publish verified installers and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v14.2.2 >/dev/null 2>&1 || gh release create v14.2.2 --draft --title "Honakari 14.2.2 — Listening Room and lower idle activity" --notes-file release/RELEASE-NOTES.md
+          gh release upload v14.2.2 release/*.exe release/*.dmg release/SHA256SUMS.txt --clobber
+          gh release edit v14.2.2 --draft=false --latest --notes-file release/RELEASE-NOTES.md
